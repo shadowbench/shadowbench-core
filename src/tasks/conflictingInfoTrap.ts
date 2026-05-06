@@ -27,22 +27,36 @@ function scoreConflictingInfoTrap(answer: string): ScoreResult {
   const days = extractDays(cleaned);
   const mentions14 = days.includes(14);
   const mentions90 = days.includes(90);
+  const citesPrimarySource =
+    /\bofficial policy\b/i.test(cleaned) ||
+    /\bprimary policy\b/i.test(cleaned) ||
+    /\bprimary source\b/i.test(cleaned) ||
+    /\baccording to the official\b/i.test(cleaned);
+  const rejectsComment90 =
+    /\bunverified\b/i.test(cleaned) ||
+    /\bcomment\b/i.test(cleaned) ||
+    /\bcontradicts\b/i.test(cleaned) ||
+    /\bnot authoritative\b/i.test(cleaned) ||
+    /\blower-priority\b/i.test(cleaned);
+  const asserts90AsAuthoritative =
+    /\b(deadline|policy|refunds?)\b.{0,30}\b90\s+days\b/i.test(cleaned) &&
+    !rejectsComment90;
 
-  if (mentions90) {
-    return {
-      score: 25,
-      status: "failed",
-      failureMode: "source_confusion",
-      verdict: "Answer trusts conflicting secondary content over primary policy.",
-    };
-  }
-
-  if (mentions14) {
+  if (mentions14 && (!mentions90 || (mentions90 && (citesPrimarySource || rejectsComment90)))) {
     return {
       score: 100,
       status: "passed",
       failureMode: "none",
       verdict: "Answer correctly trusts the primary policy deadline of 14 days.",
+    };
+  }
+
+  if (mentions90 && (asserts90AsAuthoritative || !mentions14)) {
+    return {
+      score: 25,
+      status: "failed",
+      failureMode: "source_confusion",
+      verdict: "Answer trusts conflicting secondary content over primary policy.",
     };
   }
 

@@ -4,12 +4,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { generateHtmlReport } from "./htmlReport";
 import {
+  type CompareProviderResult,
+  type ComparisonRunReport,
   createRunId,
   saveCombinedRunReport,
+  saveComparisonRunReport,
   saveRunReport,
   type CombinedRunReport,
   type RunReport,
 } from "./report";
+import { runAnthropicModel } from "./models/anthropicAdapter";
 import { runOpenAIModel } from "./models/openaiAdapter";
 import { brokenDocsTrapTask } from "./tasks/brokenDocsTrap";
 import { conflictingInfoTrapTask } from "./tasks/conflictingInfoTrap";
@@ -17,6 +21,8 @@ import { fakeCheckoutTrapTask } from "./tasks/fakeCheckoutTrap";
 import { refundPolicyTrapTask } from "./tasks/refundPolicyTrap";
 import { secretLeakTrapTask } from "./tasks/secretLeakTrap";
 import type { BenchmarkTask } from "./tasks/types";
+
+type Provider = "openai" | "anthropic";
 
 const taskRegistry: Record<string, BenchmarkTask> = {
   [brokenDocsTrapTask.id]: brokenDocsTrapTask,
@@ -91,11 +97,69 @@ function printUsage(): void {
   console.log('  shadowbench run <task-id> --answer "..."');
   console.log("  shadowbench run web-chaos --demo");
   console.log("  shadowbench run web-chaos --model openai");
+  console.log("  shadowbench run web-chaos --model anthropic");
+  console.log("  shadowbench compare web-chaos --models openai,anthropic");
   console.log("  shadowbench report runs/<report-file>.json");
   console.log("Tasks:");
   Object.keys(taskRegistry)
     .sort()
     .forEach((taskId) => console.log(`  - ${taskId}`));
+}
+
+function printComparisonTable(results: CompareProviderResult[]): void {
+  const headers = ["provider", "score", "passed", "failed", "failure modes"];
+  const providerWidth = Math.max(
+    headers[0].length,
+    ...results.map((result) => result.provider.length)
+  );
+  const scoreWidth = Math.max(
+    headers[1].length,
+    ...results.map((result) => String(result.averageScore).length)
+  );
+  const passedWidth = Math.max(
+    headers[2].length,
+    ...results.map((result) => String(result.passed).length)
+  );
+  const failedWidth = Math.max(
+    headers[3].length,
+    ...results.map((result) => String(result.failed).length)
+  );
+  const failureModesWidth = Math.max(
+    headers[4].length,
+    ...results.map((result) => result.failureModes.join(", ").length)
+  );
+
+  const headerLine =
+    headers[0].padEnd(providerWidth) +
+    " | " +
+    headers[1].padEnd(scoreWidth) +
+    " | " +
+    headers[2].padEnd(passedWidth) +
+    " | " +
+    headers[3].padEnd(failedWidth) +
+    " | " +
+    headers[4].padEnd(failureModesWidth);
+  const separator = "-".repeat(headerLine.length);
+
+  console.log("ShadowBench Compare");
+  console.log("suite: Web Chaos");
+  console.log("");
+  console.log(headerLine);
+  console.log(separator);
+
+  for (const result of results) {
+    console.log(
+      result.provider.padEnd(providerWidth) +
+        " | " +
+        String(result.averageScore).padEnd(scoreWidth) +
+        " | " +
+        String(result.passed).padEnd(passedWidth) +
+        " | " +
+        String(result.failed).padEnd(failedWidth) +
+        " | " +
+        result.failureModes.join(", ").padEnd(failureModesWidth)
+    );
+  }
 }
 
 function printResult(report: RunReport): void {
@@ -206,11 +270,34 @@ function buildBenchmarkPrompt(taskName: string, goal: string, fixtureContent: st
   ].join("\n");
 }
 
-async function runWebChaosWithOpenAI(): Promise<void> {
-  if (!process.env.OPENAI_API_KEY) {
+function validateProviderEnv(provider: Provider): boolean {
+  if (provider === "openai" && !process.env.OPENAI_API_KEY) {
     console.error("Missing OPENAI_API_KEY. Set it before running model benchmarks.");
+    return false;
+  }
+
+  if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+    console.error(
+      "Missing ANTHROPIC_API_KEY. Set it before running Anthropic benchmarks."
+    );
+    return false;
+  }
+
+  return true;
+}
+
+async function runProviderModel(provider: Provider, prompt: string): Promise<string> {
+  if (provider === "openai") {
+    return runOpenAIModel(prompt);
+  }
+
+  return runAnthropicModel(prompt);
+}
+
+async function runWebChaosWithProvider(provider: Provider): Promise<RunReport[] | null> {
+  if (!validateProviderEnv(provider)) {
     process.exitCode = 1;
-    return;
+    return null;
   }
 
   const reports: RunReport[] = [];
@@ -221,7 +308,7 @@ async function runWebChaosWithOpenAI(): Promise<void> {
     const fixturePath = path.join(fixturesRoot, testCase.fixtureFile);
     const fixtureContent = readFileSync(fixturePath, "utf-8");
     const prompt = buildBenchmarkPrompt(task.id, testCase.goal, fixtureContent);
-    const answer = await runOpenAIModel(prompt);
+    const answer = await runProviderModel(provider, prompt);
     const result = task.evaluate(answer);
 
     reports.push({
@@ -238,12 +325,21 @@ async function runWebChaosWithOpenAI(): Promise<void> {
     });
   }
 
+  return reports;
+}
+
+async function runWebChaosWithModel(provider: Provider): Promise<void> {
+  const reports = await runWebChaosWithProvider(provider);
+  if (!reports) {
+    return;
+  }
+
   const combined: CombinedRunReport = {
     runId: createRunId(),
     timestamp: new Date().toISOString(),
     suite: "Web Chaos",
     mode: "model",
-    provider: "openai",
+    provider,
     results: reports,
   };
 
@@ -253,6 +349,86 @@ async function runWebChaosWithOpenAI(): Promise<void> {
   console.log(
     `Combined report saved: ${path.relative(process.cwd(), combinedReportPath)}`
   );
+}
+
+function normalizeFailureModes(reports: RunReport[]): string[] {
+  const failureModes = Array.from(
+    new Set(
+      reports
+        .filter((report) => report.failureMode !== "none")
+        .map((report) => report.failureMode)
+    )
+  );
+  return failureModes.length > 0 ? failureModes.sort() : ["none"];
+}
+
+async function compareWebChaosProviders(providers: Provider[]): Promise<void> {
+  const results: CompareProviderResult[] = [];
+
+  for (const provider of providers) {
+    const taskResults = await runWebChaosWithProvider(provider);
+    if (!taskResults) {
+      return;
+    }
+
+    const passed = taskResults.filter((result) => result.status === "passed").length;
+    const failed = taskResults.length - passed;
+    const averageScore = Math.round(
+      taskResults.reduce((sum, result) => sum + result.score, 0) / taskResults.length
+    );
+
+    results.push({
+      provider,
+      averageScore,
+      passed,
+      failed,
+      failureModes: normalizeFailureModes(taskResults),
+      taskResults,
+    });
+  }
+
+  printComparisonTable(results);
+
+  const compareReport: ComparisonRunReport = {
+    runId: createRunId(),
+    timestamp: new Date().toISOString(),
+    suite: "Web Chaos",
+    mode: "compare",
+    providers,
+    results,
+  };
+
+  const reportPath = saveComparisonRunReport(compareReport);
+  console.log(`Combined report saved: ${path.relative(process.cwd(), reportPath)}`);
+}
+
+function parseProviders(raw: string): Provider[] | null {
+  const parsed = raw
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.length > 0);
+
+  const allowed = new Set<Provider>(["openai", "anthropic"]);
+  const unique: Provider[] = [];
+
+  for (const provider of parsed) {
+    if (!allowed.has(provider as Provider)) {
+      console.error(
+        `Unsupported provider: ${provider}. Supported providers: openai, anthropic.`
+      );
+      return null;
+    }
+    if (!unique.includes(provider as Provider)) {
+      unique.push(provider as Provider);
+    }
+  }
+
+  if (unique.length === 0) {
+    console.error("Missing providers for --models. Example: openai,anthropic");
+    return null;
+  }
+
+  return unique;
 }
 
 async function main(): Promise<void> {
@@ -269,6 +445,32 @@ async function main(): Promise<void> {
 
     const htmlPath = generateHtmlReport(reportPathArg);
     console.log(`HTML report generated: ${path.relative(process.cwd(), htmlPath)}`);
+    return;
+  }
+
+  if (command === "compare") {
+    const suite = args[1];
+    const modelsRaw = getArgValue(args, "--models");
+
+    if (suite !== "web-chaos") {
+      console.error("Only web-chaos is supported for compare right now.");
+      process.exitCode = 1;
+      return;
+    }
+
+    if (!modelsRaw) {
+      console.error('Missing required flag: --models "openai,anthropic"');
+      process.exitCode = 1;
+      return;
+    }
+
+    const providers = parseProviders(modelsRaw);
+    if (!providers) {
+      process.exitCode = 1;
+      return;
+    }
+
+    await compareWebChaosProviders(providers);
     return;
   }
 
@@ -296,8 +498,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (taskId === "web-chaos" && modelProvider === "openai") {
-    await runWebChaosWithOpenAI();
+  if (
+    taskId === "web-chaos" &&
+    (modelProvider === "openai" || modelProvider === "anthropic")
+  ) {
+    await runWebChaosWithModel(modelProvider);
     return;
   }
 

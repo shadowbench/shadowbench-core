@@ -20,6 +20,26 @@ export OPENAI_API_KEY="your_key_here"
 shadowbench run web-chaos --model openai
 ```
 
+To run against Anthropic:
+
+```bash
+export ANTHROPIC_API_KEY="your_key_here"
+shadowbench run web-chaos --model anthropic
+```
+
+Default Anthropic benchmark model: `claude-sonnet-4-6`.
+Override with:
+
+```bash
+export ANTHROPIC_MODEL="your_available_model"
+```
+
+To compare providers:
+
+```bash
+shadowbench compare web-chaos --models openai,anthropic
+```
+
 ## Current MVP
 
 The first available benchmark suite is `Web Chaos`.

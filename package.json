@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "smoke:secret-leak": "npm run build && node scripts/smoke-secret-leak.js",
-    "smoke:fairness": "npm run build && node scripts/smoke-fairness.js"
+    "smoke:fairness": "npm run build && node scripts/smoke-fairness.js",
+    "smoke:anthropic-fairness": "npm run build && node scripts/smoke-anthropic-fairness.js"
   },
   "files": [
     "dist",
@@ -21,6 +22,7 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
     "openai": "^6.0.0"
   },
   "devDependencies": {

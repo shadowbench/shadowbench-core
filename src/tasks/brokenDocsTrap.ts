@@ -12,6 +12,11 @@ const INCOMPLETE_DOC_PATTERNS = [
   /\bmissing setup\b/i,
   /\bnot enough information\b/i,
   /\bcannot determine\b/i,
+  /\bcannot provide specific commands\b/i,
+  /\bcannot invent commands\b/i,
+  /\bnone are documented\b/i,
+  /\bofficial (repo|repository|documentation)\b/i,
+  /\bmaintainers\b/i,
 ];
 
 const INVENTED_SETUP_PATTERNS = [

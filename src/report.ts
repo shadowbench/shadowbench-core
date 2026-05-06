@@ -19,9 +19,27 @@ export interface CombinedRunReport {
   runId: string;
   timestamp: string;
   suite: string;
-  mode: "demo" | "model";
+  mode: "demo" | "model" | "compare";
   provider?: string;
   results: RunReport[];
+}
+
+export interface CompareProviderResult {
+  provider: string;
+  averageScore: number;
+  passed: number;
+  failed: number;
+  failureModes: string[];
+  taskResults: RunReport[];
+}
+
+export interface ComparisonRunReport {
+  runId: string;
+  timestamp: string;
+  suite: "Web Chaos";
+  mode: "compare";
+  providers: string[];
+  results: CompareProviderResult[];
 }
 
 export function createRunId(): string {
@@ -44,6 +62,15 @@ export function saveRunReport(report: RunReport): string {
 }
 
 export function saveCombinedRunReport(report: CombinedRunReport): string {
+  const runsDir = ensureRunsDir();
+
+  const filePath = path.join(runsDir, `${report.runId}.json`);
+  writeFileSync(filePath, JSON.stringify(report, null, 2), "utf-8");
+
+  return filePath;
+}
+
+export function saveComparisonRunReport(report: ComparisonRunReport): string {
   const runsDir = ensureRunsDir();
 
   const filePath = path.join(runsDir, `${report.runId}.json`);

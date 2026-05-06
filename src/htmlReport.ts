@@ -1,9 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { FailureMode } from "./scoring";
-import type { CombinedRunReport, RunReport } from "./report";
+import type { CombinedRunReport, ComparisonRunReport, RunReport } from "./report";
 
-type ReportInput = RunReport | CombinedRunReport;
+type ReportInput = RunReport | CombinedRunReport | ComparisonRunReport;
 
 const FAILURE_MODE_ORDER: FailureMode[] = [
   "prompt_injection",
@@ -16,11 +16,29 @@ const FAILURE_MODE_ORDER: FailureMode[] = [
 ];
 
 function isCombinedReport(report: ReportInput): report is CombinedRunReport {
-  return Array.isArray((report as CombinedRunReport).results);
+  return (
+    typeof (report as CombinedRunReport).mode === "string" &&
+    ((report as CombinedRunReport).mode === "demo" ||
+      (report as CombinedRunReport).mode === "model")
+  );
+}
+
+function isComparisonReport(report: ReportInput): report is ComparisonRunReport {
+  return (report as ComparisonRunReport).mode === "compare";
+}
+
+function isRunReport(report: ReportInput): report is RunReport {
+  return typeof (report as RunReport).task === "string";
 }
 
 function asRows(report: ReportInput): RunReport[] {
-  return isCombinedReport(report) ? report.results : [report];
+  if (isComparisonReport(report)) {
+    return report.results.flatMap((providerResult) => providerResult.taskResults);
+  }
+  if (isCombinedReport(report)) {
+    return report.results;
+  }
+  return isRunReport(report) ? [report] : [];
 }
 
 function escapeHtml(value: string): string {
@@ -44,7 +62,358 @@ function buildFailureBreakdown(rows: RunReport[]): Record<FailureMode, number> {
   return counts;
 }
 
+function buildComparisonHtml(report: ComparisonRunReport): string {
+  const providerCount = report.results.length;
+  const bestScore = Math.max(...report.results.map((result) => result.averageScore), 0);
+  const totalTasks = report.results.reduce(
+    (sum, result) => sum + result.passed + result.failed,
+    0
+  );
+  const totalFailures = report.results.reduce((sum, result) => sum + result.failed, 0);
+
+  const winners = report.results.filter((result) => result.averageScore === bestScore);
+  const isTie = winners.length > 1;
+  const topResultTitle = isTie ? "Top Result: Tie" : "Top Result";
+  const topProviderLine = isTie
+    ? `Providers: ${winners.map((winner) => winner.provider).join(", ")}`
+    : `Provider: ${winners[0]?.provider ?? "-"}`;
+  const topFailureModes = isTie
+    ? winners
+        .flatMap((winner) => winner.failureModes)
+        .filter((mode, index, arr) => arr.indexOf(mode) === index)
+        .join(", ")
+    : winners[0]?.failureModes.join(", ") ?? "none";
+
+  const providerCardsHtml = report.results
+    .map((result) => {
+      const status = result.failed === 0 ? "passed" : "failed";
+      return `
+      <article class="provider-card ${status}">
+        <div class="provider-head">
+          <code>${escapeHtml(result.provider)}</code>
+          <span class="status-pill ${status}">${status.toUpperCase()}</span>
+        </div>
+        <div class="provider-score">${result.averageScore}/100</div>
+        <div class="provider-metrics">
+          <span>Passed: ${result.passed}</span>
+          <span>Failed: ${result.failed}</span>
+        </div>
+        <div class="provider-modes"><code>${escapeHtml(result.failureModes.join(", "))}</code></div>
+      </article>`;
+    })
+    .join("");
+
+  const rowsHtml = report.results
+    .map(
+      (result) => `
+      <tr class="compare-row">
+        <td><code>${escapeHtml(result.provider)}</code></td>
+        <td>${result.averageScore}</td>
+        <td>${result.passed}</td>
+        <td>${result.failed}</td>
+        <td><code>${escapeHtml(result.failureModes.join(", "))}</code></td>
+        <td><span class="status-pill ${
+          result.failed === 0 ? "passed" : "failed"
+        }">${result.failed === 0 ? "PASSED" : "FAILED"}</span></td>
+      </tr>`
+    )
+    .join("");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShadowBench Compare Report</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --ink: #101014;
+        --muted: #646674;
+        --border: #e8e8ef;
+        --accent: #6656d8;
+        --warn: #7a2a2a;
+        --ok-bg: #f1f0ff;
+        --ok-ink: #4d3fbd;
+        --bad-bg: #fbf1f1;
+        --bad-ink: #7a2a2a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 32px 20px 48px;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        line-height: 1.45;
+      }
+      .wrap { max-width: 1080px; margin: 0 auto; }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 18px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .brand { display: flex; align-items: center; gap: 14px; }
+      .logo-mark { width: 30px; height: 30px; background: var(--ink); position: relative; }
+      .logo-mark::before {
+        content: "";
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        width: 11px;
+        height: 11px;
+        background: var(--bg);
+      }
+      .logo-mark::after {
+        content: "";
+        position: absolute;
+        right: -7px;
+        bottom: -7px;
+        width: 6px;
+        height: 6px;
+        background: var(--accent);
+      }
+      .brand h1 { margin: 0; font-size: 24px; letter-spacing: -0.02em; }
+      .brand-label {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-top: 2px;
+      }
+      .topbar-meta { color: var(--muted); font-size: 12px; text-align: right; }
+      .hero, .card, .context, .interp {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: #fff;
+      }
+      .hero { padding: 24px; margin-bottom: 12px; }
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      .hero h2 { margin: 0 0 8px; font-size: 34px; letter-spacing: -0.03em; line-height: 1.1; }
+      .hero p { margin: 0 0 10px; color: var(--muted); font-size: 15px; max-width: 820px; }
+      .manifesto { margin: 0; color: var(--ink); font-size: 14px; }
+      .summary-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+      .metric {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .metric-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+      .metric-value { font-size: 22px; font-weight: 640; letter-spacing: -0.02em; }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1.4fr;
+        gap: 14px;
+        margin-bottom: 18px;
+      }
+      .card { padding: 16px; }
+      .card h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+      .top-value { font-size: 34px; line-height: 1; letter-spacing: -0.02em; margin-bottom: 8px; }
+      .top-meta { color: var(--muted); font-size: 13px; }
+      .providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+      .provider-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .provider-card.failed { border-color: #e7cccc; background: #fef8f8; }
+      .provider-card.passed { border-color: #ddd8ff; background: #fbfaff; }
+      .provider-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+      .provider-score { font-size: 28px; letter-spacing: -0.02em; margin-bottom: 8px; }
+      .provider-metrics { display: flex; gap: 10px; color: var(--muted); font-size: 13px; margin-bottom: 7px; }
+      .provider-modes { font-size: 12px; }
+      .status-pill {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        border-radius: 999px;
+        padding: 4px 9px;
+        border: 1px solid transparent;
+      }
+      .status-pill.passed { background: var(--ok-bg); color: var(--ok-ink); border-color: #d5cdf7; }
+      .status-pill.failed { background: var(--bad-bg); color: var(--bad-ink); border-color: #efcaca; }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 16px;
+      }
+      th, td {
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        padding: 12px 13px;
+        font-size: 13px;
+        vertical-align: top;
+      }
+      tbody tr:last-child td { border-bottom: none; }
+      th {
+        color: var(--muted);
+        background: #fbfbfe;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .compare-row:hover td { background: #fafafa; }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+      }
+      .context, .interp { padding: 15px; margin-bottom: 14px; }
+      .context h3, .interp h3 { margin: 0 0 8px; font-size: 16px; }
+      .context p, .interp p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+      .labels { display: flex; flex-wrap: wrap; gap: 8px; }
+      .label {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+      }
+      footer {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 12px;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      @media (max-width: 900px) {
+        .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 640px) {
+        body { padding: 20px 12px 28px; }
+        .topbar { align-items: flex-start; flex-direction: column; gap: 10px; }
+        .topbar-meta { text-align: left; }
+        .hero h2 { font-size: 28px; }
+        .summary-strip { grid-template-columns: 1fr; }
+        th, td { padding: 10px 9px; font-size: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo-mark" aria-hidden="true"></div>
+          <div>
+            <h1>ShadowBench</h1>
+            <div class="brand-label">Model Compare Report</div>
+          </div>
+        </div>
+        <div class="topbar-meta">
+          <div>Report ID: ${escapeHtml(report.runId)}</div>
+          <div>${escapeHtml(report.timestamp)}</div>
+        </div>
+      </header>
+
+      <section class="hero">
+        <p class="eyebrow">${escapeHtml(`${report.suite} Compare`.toUpperCase())}</p>
+        <h2>Model comparison across hostile web tasks</h2>
+        <p>ShadowBench compares model behavior across prompt injection, secret leakage, hallucination, unsafe action, and source-confusion traps.</p>
+        <p class="manifesto">Agent demos are controlled. Reality is not.</p>
+      </section>
+
+      <section class="summary-strip">
+        <div class="metric"><span class="metric-label">Providers tested</span><span class="metric-value">${providerCount}</span></div>
+        <div class="metric"><span class="metric-label">Best score</span><span class="metric-value">${bestScore}/100</span></div>
+        <div class="metric"><span class="metric-label">Total tasks</span><span class="metric-value">${totalTasks}</span></div>
+        <div class="metric"><span class="metric-label">Total failures</span><span class="metric-value">${totalFailures}</span></div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h3>${topResultTitle}</h3>
+          <div class="top-value">${isTie ? "Tie" : escapeHtml(winners[0]?.provider ?? "-")}</div>
+          <div class="top-meta">${escapeHtml(topProviderLine)}</div>
+          <div class="top-meta">Score: ${bestScore}/100</div>
+          <div class="top-meta">Passed: ${
+            isTie ? winners.map((winner) => winner.passed).join(", ") : winners[0]?.passed ?? 0
+          }</div>
+          <div class="top-meta">Failed: ${
+            isTie ? winners.map((winner) => winner.failed).join(", ") : winners[0]?.failed ?? 0
+          }</div>
+          <div class="top-meta">Failure modes: ${escapeHtml(topFailureModes || "none")}</div>
+        </article>
+        <article class="card">
+          <h3>Provider Cards</h3>
+          <div class="providers">${providerCardsHtml}</div>
+        </article>
+      </section>
+
+      <section>
+        <h3 style="margin: 0 0 10px; font-size: 16px;">Comparison Table</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Score</th>
+            <th>passed</th>
+            <th>failed</th>
+            <th>Failure Modes</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}
+        </tbody>
+      </table>
+      </section>
+
+      <section class="context">
+        <h3>Benchmark Context</h3>
+        <p>The Web Chaos Suite tests whether models and agents can operate in hostile web-like environments without following hidden instructions, leaking secrets, inventing unsupported commands, confirming unsafe actions, or trusting lower-priority sources.</p>
+        <div class="labels">
+          <span class="label">Prompt Injection</span>
+          <span class="label">Secret Leakage</span>
+          <span class="label">Unsafe Action</span>
+          <span class="label">Hallucination</span>
+          <span class="label">Source Confusion</span>
+        </div>
+      </section>
+
+      <section class="interp">
+        <h3>Interpretation</h3>
+        <p>A comparison report does not claim that one provider is universally safer or better. It shows how each tested provider behaved on the defined ShadowBench task set at the time of the run. Passing means the provider did not trigger the defined failure modes in this suite. Failing means one or more task-level failure criteria were triggered and should be inspected.</p>
+      </section>
+
+      <footer>
+        <span>ShadowBench is experimental and early-stage. Results are meant for reproducible evaluation, not absolute claims.</span>
+        <span>Generated by ShadowBench Core</span>
+      </footer>
+    </div>
+  </body>
+</html>`;
+}
+
 function buildHtml(report: ReportInput): string {
+  if (isComparisonReport(report)) {
+    return buildComparisonHtml(report);
+  }
+
   const rows = asRows(report);
   const averageScore = Math.round(
     rows.reduce((sum, row) => sum + row.score, 0) / rows.length
@@ -133,8 +502,16 @@ function buildHtml(report: ReportInput): string {
     }
   ).join("");
 
-  const mode = isCombinedReport(report) ? report.mode ?? "-" : "-";
-  const provider = isCombinedReport(report) ? report.provider ?? "-" : "-";
+  const mode = isCombinedReport(report)
+    ? report.mode ?? "-"
+    : isComparisonReport(report)
+      ? "compare"
+      : "-";
+  const provider = isCombinedReport(report)
+    ? report.provider ?? "-"
+    : isComparisonReport(report)
+      ? report.providers.join(", ")
+      : "-";
 
   return `<!doctype html>
 <html lang="en">
