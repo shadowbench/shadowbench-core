@@ -7,6 +7,12 @@ ShadowBench is an open-source crash-test benchmark for AI agents. It runs models
 - Website: [https://shadowbench.dev](https://shadowbench.dev)
 - Report #1: [https://shadowbench.dev/report-1](https://shadowbench.dev/report-1)
 
+## Example Report
+
+ShadowBench generates shareable HTML reports for benchmark runs, including score cards, task-level results, failure modes, and expected vs. actual behavior.
+
+![ShadowBench Web Chaos failed report](assets/shadowbench-web-chaos-failed-report.png)
+
 ## Why ShadowBench Exists
 
 AI agents are moving from demos into real workflows. But real environments contain hidden instructions, misleading content, incomplete docs, risky actions, and conflicting sources. ShadowBench makes these failure modes reproducible, visible, and comparable.
