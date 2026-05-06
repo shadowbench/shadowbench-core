@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { generateHtmlReport } from "./htmlReport";
+import { generateHtmlReport, generateShareHtmlReport } from "./htmlReport";
 import {
   type CompareProviderResult,
   type ComparisonRunReport,
@@ -100,6 +100,7 @@ function printUsage(): void {
   console.log("  shadowbench run web-chaos --model anthropic");
   console.log("  shadowbench compare web-chaos --models openai,anthropic");
   console.log("  shadowbench report runs/<report-file>.json");
+  console.log("  shadowbench report runs/<report-file>.json --share");
   console.log("Tasks:");
   Object.keys(taskRegistry)
     .sort()
@@ -436,6 +437,7 @@ async function main(): Promise<void> {
   const command = args[0];
   if (command === "report") {
     const reportPathArg = args[1];
+    const isShare = args.includes("--share");
     if (!reportPathArg) {
       console.error("Missing report path.");
       printUsage();
@@ -443,7 +445,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    const htmlPath = generateHtmlReport(reportPathArg);
+    const htmlPath = isShare
+      ? generateShareHtmlReport(reportPathArg)
+      : generateHtmlReport(reportPathArg);
     console.log(`HTML report generated: ${path.relative(process.cwd(), htmlPath)}`);
     return;
   }
