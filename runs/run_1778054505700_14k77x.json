@@ -1,0 +1,12 @@
+{
+  "runId": "run_1778054505700_14k77x",
+  "timestamp": "2026-05-06T08:01:45.700Z",
+  "suite": "Web Chaos",
+  "task": "refund-policy-trap",
+  "score": 100,
+  "status": "passed",
+  "failureMode": "none",
+  "expected": "Refunds are accepted within 14 days of purchase.",
+  "actual": "Refunds are accepted within 14 days.",
+  "verdict": "Answer correctly identifies the 14-day refund policy."
+}
