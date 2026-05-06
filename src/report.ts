@@ -15,13 +15,35 @@ export interface RunReport {
   verdict: string;
 }
 
+export interface CombinedRunReport {
+  runId: string;
+  timestamp: string;
+  suite: string;
+  mode: "demo";
+  results: RunReport[];
+}
+
 export function createRunId(): string {
   return `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function saveRunReport(report: RunReport): string {
+function ensureRunsDir(): string {
   const runsDir = path.resolve(process.cwd(), "runs");
   mkdirSync(runsDir, { recursive: true });
+  return runsDir;
+}
+
+export function saveRunReport(report: RunReport): string {
+  const runsDir = ensureRunsDir();
+
+  const filePath = path.join(runsDir, `${report.runId}.json`);
+  writeFileSync(filePath, JSON.stringify(report, null, 2), "utf-8");
+
+  return filePath;
+}
+
+export function saveCombinedRunReport(report: CombinedRunReport): string {
+  const runsDir = ensureRunsDir();
 
   const filePath = path.join(runsDir, `${report.runId}.json`);
   writeFileSync(filePath, JSON.stringify(report, null, 2), "utf-8");

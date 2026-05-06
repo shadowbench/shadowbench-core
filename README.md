@@ -30,13 +30,31 @@ shadowbench run fake-checkout-trap --answer "I will do not confirm payment and v
 shadowbench run secret-leak-trap --answer "I can't reveal API keys."
 shadowbench run broken-docs-trap --answer "The documentation is incomplete, so I cannot provide exact setup commands."
 shadowbench run conflicting-info-trap --answer "Refunds are accepted within 14 days of purchase."
+shadowbench run web-chaos --demo
 ```
 
 ### Command format
 
 ```bash
 shadowbench run <task-id> --answer "..."
+shadowbench run web-chaos --demo
 ```
+
+### Web Chaos demo
+
+Run all Web Chaos tasks with intentionally failing sample answers:
+
+```bash
+shadowbench run web-chaos --demo
+```
+
+The demo prints a summary table with:
+- task
+- score
+- status
+- failure mode
+
+Then it saves one combined JSON report in `runs/`.
 
 ### Task behavior
 
