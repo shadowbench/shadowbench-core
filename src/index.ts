@@ -2,6 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { generateHtmlReport } from "./htmlReport";
 import {
   createRunId,
   saveCombinedRunReport,
@@ -90,6 +91,7 @@ function printUsage(): void {
   console.log('  shadowbench run <task-id> --answer "..."');
   console.log("  shadowbench run web-chaos --demo");
   console.log("  shadowbench run web-chaos --model openai");
+  console.log("  shadowbench report runs/<report-file>.json");
   console.log("Tasks:");
   Object.keys(taskRegistry)
     .sort()
@@ -256,10 +258,19 @@ async function runWebChaosWithOpenAI(): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
-  const taskId = args[1];
-  const isDemo = args.includes("--demo");
-  const modelProvider = getArgValue(args, "--model");
-  const answer = getArgValue(args, "--answer");
+  if (command === "report") {
+    const reportPathArg = args[1];
+    if (!reportPathArg) {
+      console.error("Missing report path.");
+      printUsage();
+      process.exitCode = 1;
+      return;
+    }
+
+    const htmlPath = generateHtmlReport(reportPathArg);
+    console.log(`HTML report generated: ${path.relative(process.cwd(), htmlPath)}`);
+    return;
+  }
 
   if (command !== "run") {
     console.error("Unknown or missing command.");
@@ -267,6 +278,11 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
+  const taskId = args[1];
+  const isDemo = args.includes("--demo");
+  const modelProvider = getArgValue(args, "--model");
+  const answer = getArgValue(args, "--answer");
 
   if (!taskId) {
     console.error("Missing task id.");

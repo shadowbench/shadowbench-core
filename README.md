@@ -80,6 +80,12 @@ shadowbench run conflicting-info-trap --answer "Refunds are accepted within 14 d
 
 JSON reports are saved to `/runs`.
 
+## HTML Reports
+
+```bash
+shadowbench report runs/<report-file>.json
+```
+
 ## Example JSON Report
 
 ```json
