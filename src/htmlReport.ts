@@ -103,6 +103,51 @@ function buildComparisonHtml(report: ComparisonRunReport): string {
     })
     .join("");
 
+  const providerEvidenceHtml = report.results
+    .map((result) => {
+      const taskRows =
+        result.taskResults.length > 0
+          ? result.taskResults
+              .map(
+                (taskResult) => `
+            <tr class="compare-row">
+              <td><code>${escapeHtml(taskResult.task)}</code></td>
+              <td>${taskResult.score}</td>
+              <td><span class="status-pill ${taskResult.status}">${taskResult.status.toUpperCase()}</span></td>
+              <td><code>${escapeHtml(taskResult.failureMode)}</code></td>
+              <td>${escapeHtml(taskResult.verdict)}</td>
+            </tr>`
+              )
+              .join("")
+          : `<tr><td colspan="5" style="color:#646674;">No task-level results available.</td></tr>`;
+
+      return `
+      <article class="provider-evidence-card">
+        <div class="provider-evidence-head">
+          <h4><code>${escapeHtml(result.provider)}</code></h4>
+          <span class="status-pill ${result.failed === 0 ? "passed" : "failed"}">${
+            result.failed === 0 ? "PASSED" : "FAILED"
+          }</span>
+        </div>
+        <p class="provider-evidence-meta">Average score: ${result.averageScore}/100 | Passed: ${
+          result.passed
+        } | Failed: ${result.failed}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>task</th>
+              <th>score</th>
+              <th>status</th>
+              <th>failureMode</th>
+              <th>verdict</th>
+            </tr>
+          </thead>
+          <tbody>${taskRows}</tbody>
+        </table>
+      </article>`;
+    })
+    .join("");
+
   const rowsHtml = report.results
     .map(
       (result) => `
@@ -283,6 +328,31 @@ function buildComparisonHtml(report: ComparisonRunReport): string {
       .context, .interp { padding: 15px; margin-bottom: 14px; }
       .context h3, .interp h3 { margin: 0 0 8px; font-size: 16px; }
       .context p, .interp p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+      .provider-evidence { margin-bottom: 16px; }
+      .provider-evidence h3 { margin: 0 0 10px; font-size: 16px; }
+      .provider-evidence-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 10px;
+        background: #fff;
+      }
+      .provider-evidence-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+      .provider-evidence-head h4 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .provider-evidence-meta {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
       .labels { display: flex; flex-wrap: wrap; gap: 8px; }
       .label {
         border: 1px solid var(--border);
@@ -383,6 +453,11 @@ function buildComparisonHtml(report: ComparisonRunReport): string {
       </table>
       </section>
 
+      <section class="provider-evidence">
+        <h3>Provider Evidence Summary</h3>
+        ${providerEvidenceHtml}
+      </section>
+
       <section class="context">
         <h3>Benchmark Context</h3>
         <p>The Web Chaos Suite tests whether models and agents can operate in hostile web-like environments without following hidden instructions, leaking secrets, inventing unsupported commands, confirming unsafe actions, or trusting lower-priority sources.</p>
@@ -470,6 +545,34 @@ function buildHtml(report: ReportInput): string {
         <div class="tile-meta">
           <span class="status-pill ${row.status}">${row.status.toUpperCase()}</span>
           <code>${escapeHtml(row.failureMode)}</code>
+        </div>
+      </article>`
+    )
+    .join("");
+
+  const evidenceCardsHtml = rows
+    .map(
+      (row) => `
+      <article class="evidence-card ${row.status === "failed" ? "failed" : "passed"}">
+        <div class="evidence-head">
+          <div class="evidence-task"><code>${escapeHtml(row.task)}</code></div>
+          <span class="status-pill ${row.status}">${row.status.toUpperCase()}</span>
+        </div>
+        <div class="evidence-meta">
+          <span>Score: ${row.score}/100</span>
+          <span>Failure mode: <code>${escapeHtml(row.failureMode)}</code></span>
+        </div>
+        <div class="evidence-block">
+          <div class="evidence-label">Expected answer</div>
+          <div class="expected-box">${escapeHtml(row.expected)}</div>
+        </div>
+        <div class="evidence-block">
+          <div class="evidence-label">Actual answer</div>
+          <div class="actual-box">${escapeHtml(row.actual)}</div>
+        </div>
+        <div class="evidence-block">
+          <div class="evidence-label">Verdict</div>
+          <div class="verdict-box">${escapeHtml(row.verdict)}</div>
         </div>
       </article>`
     )
@@ -835,6 +938,55 @@ function buildHtml(report: ReportInput): string {
         padding: 15px;
         margin-bottom: 18px;
       }
+      .evidence-section { margin-bottom: 18px; }
+      .evidence-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 10px;
+      }
+      .evidence-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+      }
+      .evidence-card.failed {
+        border-color: #e7cccc;
+        background: #fef8f8;
+      }
+      .evidence-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 7px;
+      }
+      .evidence-task { font-size: 13px; }
+      .evidence-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .evidence-block + .evidence-block { margin-top: 8px; }
+      .evidence-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .expected-box,
+      .actual-box,
+      .verdict-box {
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 8px 9px;
+        font-size: 13px;
+      }
+      .expected-box { color: var(--muted); background: #fcfcff; }
+      .actual-box { white-space: pre-wrap; word-break: break-word; background: #fff; }
+      .verdict-box { background: #fcfcff; }
       .method-strip p {
         margin: 0 0 10px;
         color: var(--muted);
@@ -971,6 +1123,11 @@ function buildHtml(report: ReportInput): string {
       <section>
         <h2>Failure Breakdown</h2>
         <div class="breakdown">${breakdownBarsHtml}</div>
+      </section>
+
+      <section class="evidence-section">
+        <h2>Evidence Trace</h2>
+        <div class="evidence-cards">${evidenceCardsHtml}</div>
       </section>
 
       <section class="method-strip">
