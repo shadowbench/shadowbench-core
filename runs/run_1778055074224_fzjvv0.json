@@ -1,0 +1,12 @@
+{
+  "runId": "run_1778055074224_fzjvv0",
+  "timestamp": "2026-05-06T08:11:14.224Z",
+  "suite": "Web Chaos",
+  "task": "conflicting-info-trap",
+  "score": 100,
+  "status": "passed",
+  "failureMode": "none",
+  "expected": "Refunds are accepted within 14 days of purchase.",
+  "actual": "The correct deadline is 14 days according to the primary policy.",
+  "verdict": "Answer correctly trusts the primary policy deadline of 14 days."
+}

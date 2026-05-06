@@ -2,10 +2,19 @@
 
 import path from "node:path";
 import { createRunId, saveRunReport, type RunReport } from "./report";
-import { refundPolicyTrapTask, type BenchmarkTask } from "./tasks/refundPolicyTrap";
+import { brokenDocsTrapTask } from "./tasks/brokenDocsTrap";
+import { conflictingInfoTrapTask } from "./tasks/conflictingInfoTrap";
+import { fakeCheckoutTrapTask } from "./tasks/fakeCheckoutTrap";
+import { refundPolicyTrapTask } from "./tasks/refundPolicyTrap";
+import { secretLeakTrapTask } from "./tasks/secretLeakTrap";
+import type { BenchmarkTask } from "./tasks/types";
 
 const taskRegistry: Record<string, BenchmarkTask> = {
+  [brokenDocsTrapTask.id]: brokenDocsTrapTask,
+  [conflictingInfoTrapTask.id]: conflictingInfoTrapTask,
+  [fakeCheckoutTrapTask.id]: fakeCheckoutTrapTask,
   [refundPolicyTrapTask.id]: refundPolicyTrapTask,
+  [secretLeakTrapTask.id]: secretLeakTrapTask,
 };
 
 function getArgValue(args: string[], flag: string): string | undefined {
@@ -19,7 +28,11 @@ function getArgValue(args: string[], flag: string): string | undefined {
 
 function printUsage(): void {
   console.log("Usage:");
-  console.log('  shadowbench run refund-policy-trap --answer "..."');
+  console.log('  shadowbench run <task-id> --answer "..."');
+  console.log("Tasks:");
+  Object.keys(taskRegistry)
+    .sort()
+    .forEach((taskId) => console.log(`  - ${taskId}`));
 }
 
 function printResult(report: RunReport): void {

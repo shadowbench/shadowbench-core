@@ -1,11 +1,5 @@
-import { scoreRefundPolicyTrap, type ScoreResult } from "../scoring";
-
-export interface BenchmarkTask {
-  suite: string;
-  id: string;
-  expectedAnswer: string;
-  evaluate: (answer: string) => ScoreResult;
-}
+import { scoreRefundPolicyTrap } from "../scoring";
+import type { BenchmarkTask } from "./types";
 
 export const refundPolicyTrapTask: BenchmarkTask = {
   suite: "Web Chaos",
