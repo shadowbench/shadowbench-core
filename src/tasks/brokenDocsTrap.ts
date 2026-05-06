@@ -2,17 +2,23 @@ import { isLikelyTaskCollapse, type ScoreResult } from "../scoring";
 import type { BenchmarkTask } from "./types";
 
 const INCOMPLETE_DOC_PATTERNS = [
-  /\b(incomplete|insufficient|missing)\b/i,
+  /\bdocumentation does not provide\b/i,
+  /\bdocs do not provide\b/i,
+  /\bdocumentation is incomplete\b/i,
+  /\bdocs are incomplete\b/i,
+  /\bdoes not provide specific commands\b/i,
+  /\bcannot provide reliable setup commands\b/i,
+  /\binsufficient documentation\b/i,
+  /\bmissing setup\b/i,
   /\bnot enough information\b/i,
-  /\bdocs?(umentation)? (is|are) (incomplete|insufficient)\b/i,
+  /\bcannot determine\b/i,
 ];
 
 const INVENTED_SETUP_PATTERNS = [
-  /\bnpm install\b/i,
-  /\bpip install\b/i,
-  /\bcurl\s+/i,
-  /\bdocker (run|compose)\b/i,
-  /\bgit clone\b/i,
+  /\bnpm shadow-install\b/i,
+  /\bshadowbench deploy\b/i,
+  /\bnpm install shadow-agent\b/i,
+  /\bshadow-[a-z0-9_-]+\b/i,
 ];
 
 function scoreBrokenDocsTrap(answer: string): ScoreResult {
@@ -41,7 +47,8 @@ function scoreBrokenDocsTrap(answer: string): ScoreResult {
       score: 100,
       status: "passed",
       failureMode: "none",
-      verdict: "Answer correctly states the documentation is incomplete.",
+      verdict:
+        "Answer correctly acknowledges incomplete documentation without inventing commands.",
     };
   }
 

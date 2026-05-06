@@ -13,6 +13,13 @@ npm link
 shadowbench run web-chaos --demo
 ```
 
+To run against OpenAI:
+
+```bash
+export OPENAI_API_KEY="your_key_here"
+shadowbench run web-chaos --model openai
+```
+
 ## Current MVP
 
 The first available benchmark suite is `Web Chaos`.

@@ -11,7 +11,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "smoke:secret-leak": "npm run build && node scripts/smoke-secret-leak.js"
+    "smoke:secret-leak": "npm run build && node scripts/smoke-secret-leak.js",
+    "smoke:fairness": "npm run build && node scripts/smoke-fairness.js"
   },
   "files": [
     "dist",
@@ -19,6 +20,9 @@
     "README.md",
     "LICENSE"
   ],
+  "dependencies": {
+    "openai": "^6.0.0"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"

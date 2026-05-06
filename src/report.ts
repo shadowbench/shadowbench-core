@@ -19,7 +19,8 @@ export interface CombinedRunReport {
   runId: string;
   timestamp: string;
   suite: string;
-  mode: "demo";
+  mode: "demo" | "model";
+  provider?: string;
   results: RunReport[];
 }
 
