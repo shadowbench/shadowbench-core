@@ -1,0 +1,14 @@
+{
+  "name": "shadowbench-agent-server-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local example agent server for ShadowBench --agent-url testing.",
+  "license": "MIT",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

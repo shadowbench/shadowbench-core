@@ -59,6 +59,31 @@ Optional Anthropic model override:
 export ANTHROPIC_MODEL="your_model_here"
 ```
 
+## Test Your Own Agent
+
+```bash
+shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench
+```
+
+Your agent endpoint should accept:
+
+```json
+{
+  "suite": "Web Chaos",
+  "task": "refund-policy-trap",
+  "prompt": "...",
+  "fixture": "..."
+}
+```
+
+and return:
+
+```json
+{
+  "answer": "..."
+}
+```
+
 ## Compare Providers
 
 ```bash

@@ -13,6 +13,7 @@ import {
   type CombinedRunReport,
   type RunReport,
 } from "./report";
+import { runAgentUrl } from "./models/agentUrlAdapter";
 import { runAnthropicModel } from "./models/anthropicAdapter";
 import { runOpenAIModel } from "./models/openaiAdapter";
 import { brokenDocsTrapTask } from "./tasks/brokenDocsTrap";
@@ -98,6 +99,7 @@ function printUsage(): void {
   console.log("  shadowbench run web-chaos --demo");
   console.log("  shadowbench run web-chaos --model openai");
   console.log("  shadowbench run web-chaos --model anthropic");
+  console.log("  shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench");
   console.log("  shadowbench compare web-chaos --models openai,anthropic");
   console.log("  shadowbench report runs/<report-file>.json");
   console.log("  shadowbench report runs/<report-file>.json --share");
@@ -352,6 +354,54 @@ async function runWebChaosWithModel(provider: Provider): Promise<void> {
   );
 }
 
+async function runWebChaosWithAgentUrl(agentUrl: string): Promise<void> {
+  const reports: RunReport[] = [];
+  const fixturesRoot = path.resolve(process.cwd(), "fixtures");
+
+  for (const testCase of WEB_CHAOS_MODEL_CASES) {
+    const task = taskRegistry[testCase.taskId];
+    const fixturePath = path.join(fixturesRoot, testCase.fixtureFile);
+    const fixtureContent = readFileSync(fixturePath, "utf-8");
+    const prompt = buildBenchmarkPrompt(task.id, testCase.goal, fixtureContent);
+    const answer = await runAgentUrl(agentUrl, {
+      suite: "Web Chaos",
+      task: task.id,
+      prompt,
+      fixture: fixtureContent,
+    });
+    const result = task.evaluate(answer);
+
+    reports.push({
+      runId: createRunId(),
+      timestamp: new Date().toISOString(),
+      suite: task.suite,
+      task: task.id,
+      score: result.score,
+      status: result.status,
+      failureMode: result.failureMode,
+      expected: task.expectedAnswer,
+      actual: answer,
+      verdict: result.verdict,
+    });
+  }
+
+  const combined: CombinedRunReport = {
+    runId: createRunId(),
+    timestamp: new Date().toISOString(),
+    suite: "Web Chaos",
+    mode: "agent-url",
+    agentUrl,
+    results: reports,
+  };
+
+  console.log("ShadowBench Result");
+  printSummaryTable(reports);
+  const combinedReportPath = saveCombinedRunReport(combined);
+  console.log(
+    `Combined report saved: ${path.relative(process.cwd(), combinedReportPath)}`
+  );
+}
+
 function normalizeFailureModes(reports: RunReport[]): string[] {
   const failureModes = Array.from(
     new Set(
@@ -488,6 +538,7 @@ async function main(): Promise<void> {
   const taskId = args[1];
   const isDemo = args.includes("--demo");
   const modelProvider = getArgValue(args, "--model");
+  const agentUrl = getArgValue(args, "--agent-url");
   const answer = getArgValue(args, "--answer");
 
   if (!taskId) {
@@ -507,6 +558,11 @@ async function main(): Promise<void> {
     (modelProvider === "openai" || modelProvider === "anthropic")
   ) {
     await runWebChaosWithModel(modelProvider);
+    return;
+  }
+
+  if (taskId === "web-chaos" && typeof agentUrl === "string") {
+    await runWebChaosWithAgentUrl(agentUrl);
     return;
   }
 
