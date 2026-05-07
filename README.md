@@ -90,6 +90,16 @@ and return:
 shadowbench compare web-chaos --models openai,anthropic
 ```
 
+## CI Thresholds
+
+Example:
+
+```bash
+shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench --fail-under 80
+```
+
+If the average score is below 80, ShadowBench exits with a failing status code, making it usable in CI pipelines.
+
 ## Generate HTML Reports
 
 ```bash

@@ -222,7 +222,49 @@ function printSummaryTable(reports: RunReport[]): void {
   }
 }
 
-function runWebChaosDemo(): void {
+function calculateAverageScore(reports: RunReport[]): number {
+  if (reports.length === 0) {
+    return 0;
+  }
+
+  return Math.round(reports.reduce((sum, report) => sum + report.score, 0) / reports.length);
+}
+
+function parseFailUnder(rawValue: string | undefined): number | null {
+  if (typeof rawValue === "undefined") {
+    return null;
+  }
+
+  const threshold = Number(rawValue);
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+    console.error("Invalid --fail-under value. Use a number between 0 and 100.");
+    process.exitCode = 1;
+    return null;
+  }
+
+  return threshold;
+}
+
+function evaluateFailUnder(reports: RunReport[], failUnder: number | null): void {
+  if (failUnder === null) {
+    return;
+  }
+
+  const score = calculateAverageScore(reports);
+  if (score < failUnder) {
+    console.log(
+      `ShadowBench threshold failed: score ${score}/100 is below fail-under ${failUnder}/100`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(
+    `ShadowBench threshold passed: score ${score}/100 meets fail-under ${failUnder}/100`
+  );
+}
+
+function runWebChaosDemo(failUnder: number | null): void {
   const reports: RunReport[] = WEB_CHAOS_DEMO_CASES.map(({ taskId, answer }) => {
     const task = taskRegistry[taskId];
     const result = task.evaluate(answer);
@@ -256,6 +298,7 @@ function runWebChaosDemo(): void {
   console.log(
     `Combined report saved: ${path.relative(process.cwd(), combinedReportPath)}`
   );
+  evaluateFailUnder(reports, failUnder);
 }
 
 function buildBenchmarkPrompt(taskName: string, goal: string, fixtureContent: string): string {
@@ -331,7 +374,7 @@ async function runWebChaosWithProvider(provider: Provider): Promise<RunReport[] 
   return reports;
 }
 
-async function runWebChaosWithModel(provider: Provider): Promise<void> {
+async function runWebChaosWithModel(provider: Provider, failUnder: number | null): Promise<void> {
   const reports = await runWebChaosWithProvider(provider);
   if (!reports) {
     return;
@@ -352,9 +395,13 @@ async function runWebChaosWithModel(provider: Provider): Promise<void> {
   console.log(
     `Combined report saved: ${path.relative(process.cwd(), combinedReportPath)}`
   );
+  evaluateFailUnder(reports, failUnder);
 }
 
-async function runWebChaosWithAgentUrl(agentUrl: string): Promise<void> {
+async function runWebChaosWithAgentUrl(
+  agentUrl: string,
+  failUnder: number | null
+): Promise<void> {
   const reports: RunReport[] = [];
   const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 
@@ -400,6 +447,7 @@ async function runWebChaosWithAgentUrl(agentUrl: string): Promise<void> {
   console.log(
     `Combined report saved: ${path.relative(process.cwd(), combinedReportPath)}`
   );
+  evaluateFailUnder(reports, failUnder);
 }
 
 function normalizeFailureModes(reports: RunReport[]): string[] {
@@ -539,7 +587,12 @@ async function main(): Promise<void> {
   const isDemo = args.includes("--demo");
   const modelProvider = getArgValue(args, "--model");
   const agentUrl = getArgValue(args, "--agent-url");
+  const failUnderRaw = getArgValue(args, "--fail-under");
   const answer = getArgValue(args, "--answer");
+  const failUnder = parseFailUnder(failUnderRaw);
+  if (typeof failUnderRaw !== "undefined" && failUnder === null) {
+    return;
+  }
 
   if (!taskId) {
     console.error("Missing task id.");
@@ -549,7 +602,7 @@ async function main(): Promise<void> {
   }
 
   if (taskId === "web-chaos" && isDemo) {
-    runWebChaosDemo();
+    runWebChaosDemo(failUnder);
     return;
   }
 
@@ -557,12 +610,12 @@ async function main(): Promise<void> {
     taskId === "web-chaos" &&
     (modelProvider === "openai" || modelProvider === "anthropic")
   ) {
-    await runWebChaosWithModel(modelProvider);
+    await runWebChaosWithModel(modelProvider, failUnder);
     return;
   }
 
   if (taskId === "web-chaos" && typeof agentUrl === "string") {
-    await runWebChaosWithAgentUrl(agentUrl);
+    await runWebChaosWithAgentUrl(agentUrl, failUnder);
     return;
   }
 
