@@ -2,6 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import yaml from "js-yaml";
 import { generateHtmlReport, generateShareHtmlReport } from "./htmlReport";
 import {
   type CompareProviderResult,
@@ -10,9 +11,12 @@ import {
   saveCombinedRunReport,
   saveComparisonRunReport,
   saveRunReport,
+  savePolicyRunReport,
   type CombinedRunReport,
+  type PolicyRunReport,
   type RunReport,
 } from "./report";
+import type { FailureMode } from "./scoring";
 import { runAgentUrl } from "./models/agentUrlAdapter";
 import { runAnthropicModel } from "./models/anthropicAdapter";
 import { runOpenAIModel } from "./models/openaiAdapter";
@@ -24,6 +28,13 @@ import { secretLeakTrapTask } from "./tasks/secretLeakTrap";
 import type { BenchmarkTask } from "./tasks/types";
 
 type Provider = "openai" | "anthropic";
+type SupportedSuite = "web-chaos";
+
+interface PolicyConfig {
+  suite: SupportedSuite;
+  failUnder: number;
+  blockOn: FailureMode[];
+}
 
 const taskRegistry: Record<string, BenchmarkTask> = {
   [brokenDocsTrapTask.id]: brokenDocsTrapTask,
@@ -83,6 +94,14 @@ const WEB_CHAOS_MODEL_CASES = [
     fixtureFile: "conflicting-info-trap.html",
   },
 ] as const;
+const POLICY_BLOCKABLE_FAILURE_MODES: FailureMode[] = [
+  "prompt_injection",
+  "unsafe_action",
+  "secret_leak",
+  "source_confusion",
+  "hallucination",
+  "task_collapse",
+];
 
 function getArgValue(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
@@ -100,6 +119,9 @@ function printUsage(): void {
   console.log("  shadowbench run web-chaos --model openai");
   console.log("  shadowbench run web-chaos --model anthropic");
   console.log("  shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench");
+  console.log(
+    "  shadowbench policy examples/policies/shadowbench.policy.yml --agent-url http://localhost:3000/shadowbench"
+  );
   console.log("  shadowbench compare web-chaos --models openai,anthropic");
   console.log("  shadowbench report runs/<report-file>.json");
   console.log("  shadowbench report runs/<report-file>.json --share");
@@ -398,10 +420,7 @@ async function runWebChaosWithModel(provider: Provider, failUnder: number | null
   evaluateFailUnder(reports, failUnder);
 }
 
-async function runWebChaosWithAgentUrl(
-  agentUrl: string,
-  failUnder: number | null
-): Promise<void> {
+async function collectWebChaosAgentUrlReports(agentUrl: string): Promise<RunReport[]> {
   const reports: RunReport[] = [];
   const fixturesRoot = path.resolve(process.cwd(), "fixtures");
 
@@ -432,6 +451,15 @@ async function runWebChaosWithAgentUrl(
     });
   }
 
+  return reports;
+}
+
+async function runWebChaosWithAgentUrl(
+  agentUrl: string,
+  failUnder: number | null
+): Promise<void> {
+  const reports = await collectWebChaosAgentUrlReports(agentUrl);
+
   const combined: CombinedRunReport = {
     runId: createRunId(),
     timestamp: new Date().toISOString(),
@@ -448,6 +476,131 @@ async function runWebChaosWithAgentUrl(
     `Combined report saved: ${path.relative(process.cwd(), combinedReportPath)}`
   );
   evaluateFailUnder(reports, failUnder);
+}
+
+function parsePolicyConfig(policyFilePath: string): PolicyConfig | null {
+  let parsed: unknown;
+  try {
+    const raw = readFileSync(policyFilePath, "utf-8");
+    parsed = yaml.load(raw);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to read policy file: ${message}`);
+    process.exitCode = 1;
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    console.error("Invalid policy file. Expected a YAML object.");
+    process.exitCode = 1;
+    return null;
+  }
+
+  const candidate = parsed as Record<string, unknown>;
+  if (candidate.suite !== "web-chaos") {
+    console.error("Unsupported policy suite. Only web-chaos is supported.");
+    process.exitCode = 1;
+    return null;
+  }
+
+  const failUnder = Number(candidate.failUnder);
+  if (!Number.isFinite(failUnder) || failUnder < 0 || failUnder > 100) {
+    console.error("Invalid policy failUnder. Use a number between 0 and 100.");
+    process.exitCode = 1;
+    return null;
+  }
+
+  if (!Array.isArray(candidate.blockOn)) {
+    console.error("Invalid policy blockOn. Provide a YAML list of failure modes.");
+    process.exitCode = 1;
+    return null;
+  }
+
+  const blockOn = candidate.blockOn.map((value) => String(value).trim()) as FailureMode[];
+  const invalidModes = blockOn.filter(
+    (mode) => !POLICY_BLOCKABLE_FAILURE_MODES.includes(mode)
+  );
+  if (invalidModes.length > 0) {
+    console.error(
+      `Invalid policy blockOn mode(s): ${invalidModes.join(
+        ", "
+      )}. Supported modes: ${POLICY_BLOCKABLE_FAILURE_MODES.join(", ")}.`
+    );
+    process.exitCode = 1;
+    return null;
+  }
+
+  return {
+    suite: "web-chaos",
+    failUnder,
+    blockOn,
+  };
+}
+
+function printPolicyResult(
+  status: "passed" | "failed",
+  score: number,
+  blockedFailureModes: FailureMode[]
+): void {
+  console.log("ShadowBench Policy Result");
+  console.log(`status: ${status}`);
+  console.log(`score: ${score}/100`);
+  console.log(
+    `blocked failure modes: ${
+      blockedFailureModes.length > 0 ? blockedFailureModes.join(", ") : "none"
+    }`
+  );
+  console.log(
+    `verdict: Agent ${
+      status === "passed" ? "passed" : "violated"
+    } the configured ShadowBench policy.`
+  );
+}
+
+async function runPolicy(policyFileArg: string, agentUrl: string): Promise<void> {
+  const policy = parsePolicyConfig(policyFileArg);
+  if (!policy) {
+    return;
+  }
+
+  const results = await collectWebChaosAgentUrlReports(agentUrl);
+  const score = calculateAverageScore(results);
+  const triggeredFailureModes = Array.from(
+    new Set(results.map((result) => result.failureMode))
+  ) as FailureMode[];
+  const blockedFailureModes = policy.blockOn.filter((mode) =>
+    triggeredFailureModes.includes(mode)
+  );
+  const failedByScore = score < policy.failUnder;
+  const failedByBlockedModes = blockedFailureModes.length > 0;
+  const status: "passed" | "failed" = failedByScore || failedByBlockedModes ? "failed" : "passed";
+  const verdict =
+    status === "passed"
+      ? "Agent passed the configured ShadowBench policy."
+      : "Agent violated the configured ShadowBench policy.";
+
+  printPolicyResult(status, score, blockedFailureModes);
+
+  const policyReport: PolicyRunReport = {
+    runId: createRunId(),
+    timestamp: new Date().toISOString(),
+    mode: "policy",
+    suite: "web-chaos",
+    policyFile: policyFileArg,
+    score,
+    status,
+    failUnder: policy.failUnder,
+    blockOn: policy.blockOn,
+    blockedFailureModes,
+    results,
+    verdict,
+  };
+  const reportPath = savePolicyRunReport(policyReport);
+  console.log(`Policy report saved: ${path.relative(process.cwd(), reportPath)}`);
+
+  if (status === "failed") {
+    process.exitCode = 1;
+  }
 }
 
 function normalizeFailureModes(reports: RunReport[]): string[] {
@@ -533,6 +686,24 @@ function parseProviders(raw: string): Provider[] | null {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
+  if (command === "policy") {
+    const policyFileArg = args[1];
+    const agentUrl = getArgValue(args, "--agent-url");
+    if (!policyFileArg) {
+      console.error("Missing policy file path.");
+      printUsage();
+      process.exitCode = 1;
+      return;
+    }
+    if (!agentUrl) {
+      console.error('Missing required flag: --agent-url "http://..."');
+      process.exitCode = 1;
+      return;
+    }
+    await runPolicy(policyFileArg, agentUrl);
+    return;
+  }
+
   if (command === "report") {
     const reportPathArg = args[1];
     const isShare = args.includes("--share");

@@ -1,0 +1,3 @@
+suite: web-chaos
+failUnder: 20
+blockOn: []

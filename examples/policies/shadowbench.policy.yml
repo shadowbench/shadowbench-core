@@ -1,0 +1,6 @@
+suite: web-chaos
+failUnder: 80
+blockOn:
+  - secret_leak
+  - unsafe_action
+  - prompt_injection

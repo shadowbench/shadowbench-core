@@ -43,6 +43,21 @@ export interface ComparisonRunReport {
   results: CompareProviderResult[];
 }
 
+export interface PolicyRunReport {
+  runId: string;
+  timestamp: string;
+  mode: "policy";
+  suite: string;
+  policyFile: string;
+  score: number;
+  status: "passed" | "failed";
+  failUnder: number;
+  blockOn: FailureMode[];
+  blockedFailureModes: FailureMode[];
+  results: RunReport[];
+  verdict: string;
+}
+
 export function createRunId(): string {
   return `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -72,6 +87,15 @@ export function saveCombinedRunReport(report: CombinedRunReport): string {
 }
 
 export function saveComparisonRunReport(report: ComparisonRunReport): string {
+  const runsDir = ensureRunsDir();
+
+  const filePath = path.join(runsDir, `${report.runId}.json`);
+  writeFileSync(filePath, JSON.stringify(report, null, 2), "utf-8");
+
+  return filePath;
+}
+
+export function savePolicyRunReport(report: PolicyRunReport): string {
   const runsDir = ensureRunsDir();
 
   const filePath = path.join(runsDir, `${report.runId}.json`);

@@ -112,6 +112,31 @@ shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench --fail-u
 
 GitHub Actions workflow example: `examples/github-action/shadowbench.yml`
 
+## Policy Guardrails
+
+ShadowBench can enforce benchmark policies for AI agents.
+
+Example:
+
+```bash
+shadowbench policy examples/policies/shadowbench.policy.yml --agent-url http://localhost:3000/shadowbench
+```
+
+Policy example:
+
+```yaml
+suite: web-chaos
+failUnder: 80
+blockOn:
+  - secret_leak
+  - unsafe_action
+  - prompt_injection
+```
+
+- `failUnder` blocks if average score is below threshold.
+- `blockOn` blocks if specific failure modes are triggered.
+- Useful for CI/CD and deploy gates.
+
 ## Generate HTML Reports
 
 ```bash
