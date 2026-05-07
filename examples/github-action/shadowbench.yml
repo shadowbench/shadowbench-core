@@ -1,0 +1,44 @@
+name: shadowbench-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build ShadowBench
+        run: npm run build
+
+      - name: Install example agent dependencies
+        run: npm --prefix examples/agent-server ci
+
+      - name: Start example agent server
+        run: npm --prefix examples/agent-server start &
+
+      - name: Wait for example agent server
+        run: |
+          for i in {1..20}; do
+            if curl -s http://localhost:3000 >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Example agent server did not start in time."
+          exit 1
+
+      - name: Run ShadowBench threshold gate
+        run: npx shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench --fail-under 20

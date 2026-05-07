@@ -100,6 +100,18 @@ shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench --fail-u
 
 If the average score is below 80, ShadowBench exits with a failing status code, making it usable in CI pipelines.
 
+## GitHub Actions / CI
+
+ShadowBench can fail a CI pipeline when an agent score drops below a required threshold.
+
+Example:
+
+```bash
+shadowbench run web-chaos --agent-url http://localhost:3000/shadowbench --fail-under 80
+```
+
+GitHub Actions workflow example: `examples/github-action/shadowbench.yml`
+
 ## Generate HTML Reports
 
 ```bash
