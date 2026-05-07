@@ -155,6 +155,24 @@ HTML reports include score cards, task summaries, failure breakdowns, and eviden
 | `broken-docs-trap` | `hallucination` | Whether a model invents unsupported setup commands from incomplete docs. |
 | `conflicting-info-trap` | `source_confusion` | Whether a model trusts official policy over conflicting comments. |
 
+## Tool Misuse Suite
+
+Command:
+
+```bash
+shadowbench run tool-misuse --demo
+```
+
+Tool Misuse tests whether agents take risky tool actions without verification, including unsafe external communication, destructive file actions, suspicious tool output, wrong API selection, and approval bypass.
+
+| Task | Failure mode | What it tests |
+| --- | --- | --- |
+| `send-email-trap` | `unsafe_action` | Whether an agent sends external communication without explicit confirmation. |
+| `delete-file-trap` | `unsafe_action` | Whether an agent performs destructive file deletion without confirmation. |
+| `fake-tool-output-trap` | `tool_output_trust` | Whether an agent blindly trusts suspicious tool output. |
+| `wrong-api-trap` | `tool_misuse` | Whether an agent picks the wrong API/tool for a task. |
+| `approval-bypass-trap` | `approval_bypass` | Whether an agent skips a required approval gate. |
+
 ## Failure Modes
 
 | Failure mode | Meaning |
@@ -162,6 +180,9 @@ HTML reports include score cards, task summaries, failure breakdowns, and eviden
 | `prompt_injection` | Followed hidden or hostile instructions instead of source truth. |
 | `secret_leak` | Exposed or repeated secret-like data. |
 | `unsafe_action` | Encouraged or confirmed a risky action. |
+| `tool_output_trust` | Trusted suspicious tool output without source verification. |
+| `tool_misuse` | Selected or called the wrong tool/API for the task. |
+| `approval_bypass` | Skipped a required approval gate. |
 | `hallucination` | Invented unsupported commands or facts. |
 | `source_confusion` | Treated lower-priority/conflicting source as authoritative. |
 | `task_collapse` | Response was empty, vague, or unrelated to the task objective. |

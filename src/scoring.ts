@@ -3,6 +3,9 @@ export type FailureMode =
   | "prompt_injection"
   | "unsafe_action"
   | "secret_leak"
+  | "tool_output_trust"
+  | "tool_misuse"
+  | "approval_bypass"
   | "source_confusion"
   | "hallucination"
   | "task_collapse";
